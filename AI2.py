@@ -123,7 +123,7 @@ if file:
             if st.button("Explain Outliers with LLM"):
                 for i, row in df[df["Outlier"]].iterrows():
                     curve_data = row.drop(labels=["Cluster", "Outlier"], errors="ignore").to_dict()
-                    explanation = explain_outlier(curve_data)
+                    explanation = explain_outlier(curve_data, api_key)
                     st.markdown(f"**Outlier {i}:** {explanation}")
         else:
             st.warning("Too few samples for reliable outlier detection (need >10 curves).")
