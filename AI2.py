@@ -6,6 +6,7 @@ import seaborn as sns
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from sklearn.covariance import EllipticEnvelope
+# Make sure llm_utils is updated with the correct model ID
 from llm_utils import explain_cluster, compare_clusters, answer_user_query, explain_outlier
 
 st.set_page_config(page_title="Functional Data Clustering", layout="wide")
@@ -25,7 +26,13 @@ if file:
     # ----------------------------- #
     # ⚙️ Feature Engineering (Optional smoothing, derivs can be added here)
     # ----------------------------- #
-    timepoints = df.columns.astype(float) if df.columns.str.replace('.', '', 1).str.isnumeric().all() else np.arange(df.shape[1])
+    # Ensure timepoints are numeric if possible, otherwise use index
+    try:
+        timepoints = df.columns.astype(float)
+    except ValueError:
+        st.warning("CSV columns are not numeric. Using row index as timepoints.")
+        timepoints = np.arange(df.shape[1])
+
 
     # ----------------------------- #
     # 📊 Clustering
@@ -34,15 +41,19 @@ if file:
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(df)
 
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10) # Added n_init for KMeans
     clusters = kmeans.fit_predict(X_scaled)
     df["Cluster"] = clusters
 
     st.subheader("📉 Clustered Functional Curves")
     fig, ax = plt.subplots()
     for cluster_id in range(n_clusters):
-        for row in df[df["Cluster"] == cluster_id].drop("Cluster", axis=1).values:
-            ax.plot(timepoints, row, alpha=0.4, label=f"Cluster {cluster_id}" if cluster_id == 0 else "")
+        # Plotting logic needs adjustment to handle labels correctly
+        cluster_data = df[df["Cluster"] == cluster_id].drop("Cluster", axis=1)
+        for i, row in enumerate(cluster_data.values):
+             ax.plot(timepoints, row, alpha=0.4, color=plt.cm.viridis(cluster_id / (n_clusters - 1)), label=f"Cluster {cluster_id}" if i == 0 else "") # Use color map and label only once per cluster
+
+    ax.legend() # Add legend
     st.pyplot(fig)
 
     # ----------------------------- #
@@ -51,11 +62,16 @@ if file:
     cluster_summary = {}
     for cluster_id in range(n_clusters):
         cluster_data = df[df["Cluster"] == cluster_id].drop("Cluster", axis=1)
+        # Calculate summary stats across all points in the cluster
+        all_points = cluster_data.values.flatten()
         summary = {
-            "mean": cluster_data.mean().mean(),
-            "std": cluster_data.stack().std(),
-            "min": cluster_data.min().min(),
-            "max": cluster_data.max().max()
+            "cluster_id": cluster_id, # Include cluster ID in summary
+            "num_curves": len(cluster_data),
+            "mean_value": np.mean(all_points),
+            "std_value": np.std(all_points),
+            "min_value": np.min(all_points),
+            "max_value": np.max(all_points),
+            "mean_curve": cluster_data.mean().tolist() # Mean curve as a list
         }
         cluster_summary[cluster_id] = summary
 
@@ -70,18 +86,35 @@ if file:
     # ----------------------------- #
     # 📄 Generate Markdown Report
     # ----------------------------- #
-    def generate_report(cluster_summary, explanations):
-        report = "# Functional Data Cluster Report\n\n"
-        for cid, stats in cluster_summary.items():
-            report += f"## Cluster {cid}\n\n"
-            report += f"**Stats:** {stats}\n\n"
-            report += f"**LLM Insight:** {explanations.get(cid, 'N/A')}\n\n"
-        return report
+    # LLM explanation for each cluster (can be slow, maybe do on button click?)
+    if st.button("Generate LLM Explanations for Each Cluster"):
+         st.subheader("🧠 LLM Insights per Cluster")
+         cluster_explanations = {}
+         for cid, stats in cluster_summary.items():
+             with st.spinner(f"Getting LLM explanation for Cluster {cid}..."):
+                 explanation = explain_cluster(stats, api_key) # Pass the stats dict
+                 cluster_explanations[cid] = explanation
+                 st.markdown(f"**Cluster {cid}:** {explanation}")
 
+    # Download report button (uses potentially generated explanations)
     if st.button("Download Cluster Report (Markdown)"):
-        explanations = {cid: explain_cluster(stats, api_key) for cid, stats in cluster_summary.items()}
-        report_md = generate_report(cluster_summary, explanations)
-        st.download_button("Download Report", report_md, file_name="cluster_report.md")
+        # Need to ensure explanations are available, maybe store in session state?
+        # For simplicity, let's regenerate for the report download
+        with st.spinner("Generating explanations for report..."):
+             cluster_explanations_for_report = {cid: explain_cluster(stats, api_key) for cid, stats in cluster_summary.items()}
+
+        def generate_report(cluster_summary, explanations):
+            report = "# Functional Data Cluster Report\n\n"
+            for cid, stats in cluster_summary.items():
+                report += f"## Cluster {cid}\n\n"
+                report += f"**Summary Stats:**\n```json\n{stats}\n```\n\n" # Format stats nicely
+                report += f"**LLM Insight:** {explanations.get(cid, 'N/A')}\n\n"
+                # Optional: Add mean curve plot to report (more complex)
+            return report
+
+        report_md = generate_report(cluster_summary, cluster_explanations_for_report)
+        st.download_button("Download Report", report_md, file_name="functional_data_cluster_report.md")
+
 
     # ----------------------------- #
     # 💬 Ask a Question
@@ -90,9 +123,14 @@ if file:
     user_query = st.text_input("Ask something like: 'Which cluster has the steepest rise?'" )
     if st.button("Ask LLM"):
         if user_query.strip():
-            answer = answer_user_query(user_query, api_key)
+            # --- CHANGE THIS LINE ---
+            answer = answer_user_query(cluster_summary, user_query, api_key) # Pass cluster_summary
+            # -----------------------
             st.markdown("**LLM Response:**")
             st.write(answer)
+        else:
+            st.warning("Please enter a question.")
+
 
     # ----------------------------- #
     # 🔥 Heatmap
@@ -101,6 +139,8 @@ if file:
     sorted_df = df.sort_values("Cluster")
     fig, ax = plt.subplots(figsize=(10, 6))
     sns.heatmap(sorted_df.drop("Cluster", axis=1), cmap="viridis", ax=ax, cbar=True)
+    ax.set_xlabel("Timepoints")
+    ax.set_ylabel("Curve Index (Sorted by Cluster)")
     st.pyplot(fig)
 
     # ----------------------------- #
@@ -110,23 +150,37 @@ if file:
     try:
         X = df.drop(columns=["Cluster"], errors="ignore")
         if len(X) > 10:
-            envelope = EllipticEnvelope(contamination=0.1).fit(X)
+            # Use a robust method like Isolation Forest or One-Class SVM for functional data
+            # EllipticEnvelope assumes Gaussian distribution, which might not fit functional data well
+            # For simplicity, keeping EllipticEnvelope but note its limitations
+            envelope = EllipticEnvelope(contamination=0.1, random_state=42).fit(X) # Added random_state
             df["Outlier"] = envelope.predict(X) == -1
-            st.write(f"Detected {df['Outlier'].sum()} outliers.")
+            num_outliers = df['Outlier'].sum()
+            st.write(f"Detected {num_outliers} outliers.")
 
-            if st.checkbox("Show Outlier Curves"):
-                fig, ax = plt.subplots()
-                for row in df[df["Outlier"]].drop(["Cluster", "Outlier"], axis=1).values:
-                    ax.plot(timepoints, row, color="orange", alpha=0.7)
-                st.pyplot(fig)
+            if num_outliers > 0:
+                if st.checkbox("Show Outlier Curves"):
+                    fig, ax = plt.subplots()
+                    outlier_data = df[df["Outlier"]].drop(["Cluster", "Outlier"], axis=1)
+                    for i, row in outlier_data.iterrows():
+                        ax.plot(timepoints, row.values, color="orange", alpha=0.7, label=f"Outlier {i}" if i == outlier_data.index[0] else "") # Label only first outlier
+                    ax.legend()
+                    st.pyplot(fig)
 
-            if st.button("Explain Outliers with LLM"):
-                for i, row in df[df["Outlier"]].iterrows():
-                    curve_data = row.drop(labels=["Cluster", "Outlier"], errors="ignore").to_dict()
-                    explanation = explain_outlier(curve_data, api_key)
-                    st.markdown(f"**Outlier {i}:** {explanation}")
+                if st.button("Explain Outliers with LLM"):
+                    outlier_curves = df[df["Outlier"]].drop(["Cluster", "Outlier"], axis=1)
+                    if not outlier_curves.empty:
+                        for i, row in outlier_curves.iterrows():
+                            curve_data = row.to_dict() # Pass the series as dict
+                            with st.spinner(f"Getting LLM explanation for Outlier {i}..."):
+                                explanation = explain_outlier(curve_data, api_key)
+                                st.markdown(f"**Outlier {i}:** {explanation}")
+                    else:
+                        st.info("No outliers detected to explain.")
+            else:
+                 st.info("No outliers detected.")
+
         else:
             st.warning("Too few samples for reliable outlier detection (need >10 curves).")
     except Exception as e:
         st.error(f"Outlier detection failed: {e}")
-
