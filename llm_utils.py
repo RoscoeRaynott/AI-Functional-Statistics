@@ -30,8 +30,13 @@ def call_llm(prompt: str, api_key: str) -> str:
         response = requests.post(OPENROUTER_API_URL, headers=headers, json=body)
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"]
-    except Exception as e:
-        return f"[LLM Error] {str(e)}"
+    except requests.HTTPError as e:
+        # return the API’s own error message for debugging
+        try:
+            err = response.json()
+        except Exception:
+            err = response.text
+        return f"[LLM Error {response.status_code}] {err}"
 
 # 1. Explain a single cluster
 
