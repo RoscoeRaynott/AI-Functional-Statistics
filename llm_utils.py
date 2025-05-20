@@ -10,7 +10,7 @@ import os
 
 # Set your OpenRouter API key here or via environment variable
 #OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "your-api-key-here")
-OPENROUTER_API_KEY = "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"
+OPENROUTER_API_KEY = st.secrets["OPENROUTER_API_KEY"]
 
 # Choose an available free LLM on OpenRouter
 LLM_MODEL = "openrouter/mistral"  # e.g., mistral, llama2, etc.
