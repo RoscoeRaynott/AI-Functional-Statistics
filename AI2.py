@@ -11,6 +11,9 @@ from llm_utils import explain_cluster, compare_clusters, answer_user_query, expl
 st.set_page_config(page_title="Functional Data Clustering", layout="wide")
 st.title("📈 Functional Data Analysis with Clustering and LLMs")
 
+# Load API key securely
+api_key = st.secrets['OPENROUTER_API_KEY']
+
 # ----------------------------- #
 # 📁 Upload Data
 # ----------------------------- #
@@ -61,7 +64,7 @@ if file:
     # ----------------------------- #
     if st.button("Compare Clusters via LLM"):
         st.subheader("🔍 LLM Comparison of Clusters")
-        comparison = compare_clusters(cluster_summary)
+        comparison = compare_clusters(cluster_summary, api_key)
         st.markdown(comparison)
 
     # ----------------------------- #
@@ -76,7 +79,7 @@ if file:
         return report
 
     if st.button("Download Cluster Report (Markdown)"):
-        explanations = {cid: explain_cluster(cid, stats) for cid, stats in cluster_summary.items()}
+        explanations = {cid: explain_cluster(stats, api_key) for cid, stats in cluster_summary.items()}
         report_md = generate_report(cluster_summary, explanations)
         st.download_button("Download Report", report_md, file_name="cluster_report.md")
 
@@ -84,10 +87,10 @@ if file:
     # 💬 Ask a Question
     # ----------------------------- #
     st.subheader("💬 Ask a Question About Your Data")
-    user_query = st.text_input("Ask something like: 'Which cluster has the steepest rise?'")
+    user_query = st.text_input("Ask something like: 'Which cluster has the steepest rise?'" )
     if st.button("Ask LLM"):
         if user_query.strip():
-            answer = answer_user_query(cluster_summary, user_query)
+            answer = answer_user_query(user_query, api_key)
             st.markdown("**LLM Response:**")
             st.write(answer)
 
@@ -119,7 +122,7 @@ if file:
         if st.button("Explain Outliers with LLM"):
             for i, row in df[df["Outlier"]].iterrows():
                 curve_data = row.drop(labels=["Cluster", "Outlier"], errors="ignore").to_dict()
-                explanation = explain_outlier(curve_data)
+                explanation = explain_outlier(curve_data, api_key)
                 st.markdown(f"**Outlier {i}:** {explanation}")
     except Exception as e:
         st.error(f"Outlier detection failed: {e}")
