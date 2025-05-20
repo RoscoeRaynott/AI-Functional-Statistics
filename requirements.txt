@@ -1,0 +1,9 @@
+streamlit
+pandas
+numpy
+matplotlib
+seaborn
+scikit-learn
+httpx
+requests
+python-dotenv  # for loading OpenRouter API key from .env
