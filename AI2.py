@@ -106,23 +106,27 @@ if file:
     # ----------------------------- #
     # 🚨 Outlier Detection
     # ----------------------------- #
-    st.subheader("🚨 Outlier Detection in Functional Data")
+        st.subheader("🚨 Outlier Detection in Functional Data")
     try:
         X = df.drop(columns=["Cluster"], errors="ignore")
-        envelope = EllipticEnvelope(contamination=0.1).fit(X)
-        df["Outlier"] = envelope.predict(X) == -1
-        st.write(f"Detected {df['Outlier'].sum()} outliers.")
+        if len(X) > 10:
+            envelope = EllipticEnvelope(contamination=0.1).fit(X)
+            df["Outlier"] = envelope.predict(X) == -1
+            st.write(f"Detected {df['Outlier'].sum()} outliers.")
 
-        if st.checkbox("Show Outlier Curves"):
-            fig, ax = plt.subplots()
-            for row in df[df["Outlier"]].drop(["Cluster", "Outlier"], axis=1).values:
-                ax.plot(timepoints, row, color="orange", alpha=0.7)
-            st.pyplot(fig)
+            if st.checkbox("Show Outlier Curves"):
+                fig, ax = plt.subplots()
+                for row in df[df["Outlier"]].drop(["Cluster", "Outlier"], axis=1).values:
+                    ax.plot(timepoints, row, color="orange", alpha=0.7)
+                st.pyplot(fig)
 
-        if st.button("Explain Outliers with LLM"):
-            for i, row in df[df["Outlier"]].iterrows():
-                curve_data = row.drop(labels=["Cluster", "Outlier"], errors="ignore").to_dict()
-                explanation = explain_outlier(curve_data, api_key)
-                st.markdown(f"**Outlier {i}:** {explanation}")
+            if st.button("Explain Outliers with LLM"):
+                for i, row in df[df["Outlier"]].iterrows():
+                    curve_data = row.drop(labels=["Cluster", "Outlier"], errors="ignore").to_dict()
+                    explanation = explain_outlier(curve_data)
+                    st.markdown(f"**Outlier {i}:** {explanation}")
+        else:
+            st.warning("Too few samples for reliable outlier detection (need >10 curves).")
     except Exception as e:
         st.error(f"Outlier detection failed: {e}")
+
