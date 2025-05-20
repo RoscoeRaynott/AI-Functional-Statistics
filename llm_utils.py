@@ -10,7 +10,7 @@ import requests
 # OpenRouter API endpoint
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 # Choose an available free LLM on OpenRouter
-LLM_MODEL = "openrouter/mistral"  # e.g., mistral, llama2, etc.
+LLM_MODEL = "openrouter/Mistral-7B-Instruct-v0.1"  # e.g., mistral, llama2, etc.
 
 # Helper: Make a chat request to the LLM
 # Note: api_key is passed from the Streamlit app via st.secrets or env vars
