@@ -106,7 +106,7 @@ if file:
     # ----------------------------- #
     # 🚨 Outlier Detection
     # ----------------------------- #
-        st.subheader("🚨 Outlier Detection in Functional Data")
+    st.subheader("🚨 Outlier Detection in Functional Data")
     try:
         X = df.drop(columns=["Cluster"], errors="ignore")
         if len(X) > 10:
