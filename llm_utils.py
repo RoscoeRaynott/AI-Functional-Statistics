@@ -10,7 +10,10 @@ import requests
 # OpenRouter API endpoint
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 # Choose an available free LLM on OpenRouter
-LLM_MODEL = "openrouter/llama2"  # e.g., mistral, llama2, etc.
+# --- CHANGE THIS LINE ---
+LLM_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"  # Replace with a valid model ID from OpenRouter
+# e.g., "mistralai/Mistral-7B-Instruct-v0.2", "meta-llama/Llama-2-7b-chat-hf", etc.
+# -----------------------
 
 # Helper: Make a chat request to the LLM
 # Note: api_key is passed from the Streamlit app via st.secrets or env vars
@@ -40,9 +43,9 @@ def call_llm(prompt: str, api_key: str) -> str:
 
 # 1. Explain a single cluster
 
-def explain_cluster(cluster_id: int, summary_stats: dict, api_key: str) -> str:
+def explain_cluster(summary_stats: dict, api_key: str) -> str: # Removed cluster_id from signature as it's in summary_stats
     prompt = f"""
-    The following are summary statistics of a group of functional curves (cluster {cluster_id}):
+    The following are summary statistics of a group of functional curves (cluster {summary_stats.get('cluster_id', 'N/A')}):
 
     {summary_stats}
 
@@ -61,7 +64,7 @@ def compare_clusters(cluster_summaries: dict, api_key: str) -> str:
 
 # 3. Natural language question about the data
 
-def answer_user_query(cluster_summaries: dict, question: str, api_key: str) -> str:
+def answer_user_query(cluster_summaries: dict, question: str, api_key: str) -> str: # Corrected signature
     formatted = "\n".join([f"Cluster {cid}: {summary}" for cid, summary in cluster_summaries.items()])
     prompt = f"""
     Here is a summary of clustered functional data:
