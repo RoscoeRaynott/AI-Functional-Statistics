@@ -45,7 +45,7 @@ if file:
     kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10) # Added n_init for KMeans
     clusters = kmeans.fit_predict(X_scaled)
     df["Cluster"] = clusters
-    ''''
+    '''
 
     st.subheader("📊 Clustering Options")
     clustering_method = st.selectbox(
