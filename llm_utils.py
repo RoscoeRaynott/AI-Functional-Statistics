@@ -55,11 +55,12 @@ def explain_cluster(summary_stats: dict, api_key: str) -> str: # Removed cluster
 
 # 2. Compare multiple clusters
 
-def compare_clusters(cluster_summaries: dict, api_key: str) -> str:
+def compare_clusters(cluster_summaries: dict, api_key: str, clustering_method) -> str:
     prompt = "Compare the following functional data clusters:\n\n"
     for cid, stats in cluster_summaries.items():
         prompt += f"Cluster {cid}:\n{stats}\n\n"
     prompt += "Summarize the main differences between these clusters."
+    prompt += f"\n\nThe data was clustered using the '{clustering_method}' algorithm."
     return call_llm(prompt, api_key)
 
 # 3. Natural language question about the data
