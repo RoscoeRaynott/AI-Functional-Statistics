@@ -37,6 +37,7 @@ if file:
     # ----------------------------- #
     # 📊 Clustering
     # ----------------------------- #
+    '''
     n_clusters = st.slider("Number of clusters", 2, 10, 3)
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(df)
@@ -44,7 +45,56 @@ if file:
     kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10) # Added n_init for KMeans
     clusters = kmeans.fit_predict(X_scaled)
     df["Cluster"] = clusters
+    ''''
 
+    st.subheader("📊 Clustering Options")
+    clustering_method = st.selectbox(
+        "Select Clustering Algorithm",
+        options=["k-means", "dbscan", "gmm", "hierarchical"]
+    )
+    
+    if clustering_method == "k-means":
+        n_clusters = st.slider("Number of clusters (for k-means)", 2, 10, 3)
+    elif clustering_method == "gmm":
+        n_clusters = st.slider("Number of components (for GMM)", 2, 10, 3)
+    elif clustering_method == "hierarchical":
+        n_clusters = st.slider("Number of clusters (for hierarchical)", 2, 10, 3)
+    else:  # dbscan
+        n_clusters = None
+    
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(df)
+    
+    # Initialize cluster labels
+    clusters = np.zeros(len(X_scaled))
+    
+    # Choose and fit model
+    if clustering_method == "k-means":
+        model = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+    elif clustering_method == "dbscan":
+        eps = st.slider("Epsilon (DBSCAN)", 0.1, 2.0, 0.5)
+        min_samples = st.slider("Min Samples (DBSCAN)", 2, 10, 5)
+        model = DBSCAN(eps=eps, min_samples=min_samples)
+    elif clustering_method == "gmm":
+        model = GaussianMixture(n_components=n_clusters, random_state=42)
+    elif clustering_method == "hierarchical":
+        linkage = st.selectbox("Linkage Criterion", ["ward", "complete", "average", "single"])
+        model = AgglomerativeClustering(n_clusters=n_clusters, linkage=linkage)
+    
+    # Fit the model
+    model.fit(X_scaled)
+    
+    # Extract cluster labels
+    if hasattr(model, 'labels_'):
+        clusters = model.labels_
+    elif hasattr(model, 'predict'):
+        clusters = model.predict(X_scaled)
+    
+    df["Cluster"] = clusters
+    
+    # Optional: Exclude noise points for stats (e.g., DBSCAN)
+    valid_clusters = [cid for cid in np.unique(clusters) if cid != -1]
+    
     st.subheader("📉 Clustered Functional Curves")
     fig, ax = plt.subplots()
     for cluster_id in range(n_clusters):
@@ -59,6 +109,7 @@ if file:
     # ----------------------------- #
     # 📦 Cluster Summary Stats
     # ----------------------------- #
+    '''
     cluster_summary = {}
     for cluster_id in range(n_clusters):
         cluster_data = df[df["Cluster"] == cluster_id].drop("Cluster", axis=1)
@@ -74,7 +125,23 @@ if file:
             "mean_curve": cluster_data.mean().tolist() # Mean curve as a list
         }
         cluster_summary[cluster_id] = summary
-
+    '''
+    cluster_summary = {}
+    for cluster_id in valid_clusters:
+        cluster_data = df[df["Cluster"] == cluster_id].drop("Cluster", axis=1)
+        all_points = cluster_data.values.flatten()
+        summary = {
+            "cluster_id": cluster_id,
+            "num_curves": len(cluster_data),
+            "mean_value": np.mean(all_points),
+            "std_value": np.std(all_points),
+            "min_value": np.min(all_points),
+            "max_value": np.max(all_points),
+            "mean_curve": cluster_data.mean().tolist(),
+            "method": clustering_method  # Useful for LLM explanations
+        }
+        cluster_summary[cluster_id] = summary
+    
     # ----------------------------- #
     # 🤖 LLM Comparison
     # ----------------------------- #
