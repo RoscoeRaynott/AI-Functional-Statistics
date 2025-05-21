@@ -179,7 +179,7 @@ if file:
     if st.button("Compare Clusters via LLM"):
         if cluster_summary: # Ensure there are clusters to compare
             st.subheader("🔍 LLM Comparison of Clusters")
-            comparison = compare_clusters(cluster_summary, api_key)
+            comparison = compare_clusters(cluster_summary, api_key, clustering_method)
             st.markdown(comparison)
         else:
             st.info("No valid clusters found for comparison.")
