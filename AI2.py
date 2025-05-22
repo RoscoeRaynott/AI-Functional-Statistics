@@ -7,8 +7,7 @@ from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering # Added DBSC
 from sklearn.mixture import GaussianMixture # Added GaussianMixture
 from sklearn.preprocessing import StandardScaler
 from sklearn.covariance import EllipticEnvelope
-from skfda.representation import FDataGrid
-from skfda.preprocessing.dim_reduction import FPCA
+from sklearn.decomposition import PCA
 # Make sure llm_utils is updated with the correct model ID
 # Assuming llm_utils is a local file or part of your environment
 try:
@@ -70,115 +69,100 @@ if file:
         df = df_numeric # Update df to only contain numeric columns
 
     # ----------------------------- #
-    # 🔬 Functional Principal Component Analysis (FPCA)
+    # 🔬 Functional Principal Component Analysis (FPCA) - using sklearn.PCA
     # ----------------------------- #
-    st.subheader("🔬 Functional Principal Component Analysis (FPCA)")
+    st.subheader("🔬 Functional Principal Component Analysis (PCA on Curves)")
 
     st.markdown("""
-Functional Principal Component Analysis (FPCA) is a technique used to identify the main modes of variation in a set of functional data.
-- **Mean Function**: Represents the average curve in your dataset.
-- **Principal Components (Eigenfunctions)**: These are functions that represent directions of greatest variance in the data.
-- **Modes of Variation**: The plots showing "Mean +/- sqrt(λ) * Component" illustrate how the data varies around the mean. Each component captures a certain percentage of the total variance.
-""")
-    
+    Principal Component Analysis (PCA) applied to functional data (curves) helps identify the main modes of variation.
+    - **Mean Function**: Represents the average curve in your dataset.
+    - **Principal Components (Eigenvectors/Eigenfunctions)**: These are vectors (representing functions) that capture directions of greatest variance.
+    - **Modes of Variation**: The plots showing "Mean +/- sqrt(λ) * Component" illustrate how the data varies around the mean. Each component captures a certain percentage of the total variance.
+    """)
+
     if 'df_numeric' in locals() and not df_numeric.empty and 'timepoints' in locals():
-        # Convert DataFrame to FDataGrid
-        data_matrix = df_numeric.values
-        fd = FDataGrid(data_matrix, grid_points=timepoints)
+        data_matrix_pca = df_numeric.values # Use the raw numeric data
 
         # Slider for number of components
-        # Ensure n_components_fpca is not more than available features or samples
-        max_components = min(10, fd.n_samples) 
-        if hasattr(fd, 'n_features'): # n_features might not exist for certain FDataGrid inputs
-             max_components = min(max_components, fd.n_features)
-        
-        n_components_fpca = st.slider(
-            "Number of Principal Components (FPCA)", 
-            1, 
-            max_components, # Adjusted max value
-            min(3, max_components) # Adjusted default value
+        # Max components is min(n_samples, n_features) for sklearn.PCA
+        max_pca_components = min(data_matrix_pca.shape[0], data_matrix_pca.shape[1])
+        max_pca_components = min(10, max_pca_components) # Practical limit for visualization
+        max_pca_components = max(1, max_pca_components) # Ensure at least 1
+
+        default_pca_components = min(3, max_pca_components)
+        default_pca_components = max(1, default_pca_components)
+
+
+        n_components_pca_val = st.slider(
+            "Number of Principal Components (PCA)",
+            1,
+            max_pca_components,
+            default_pca_components
         )
 
-        # Perform FPCA
-        fpca = FPCA(n_components=n_components_fpca)
-        fpca.fit(fd)
+        # Perform PCA
+        pca_model = PCA(n_components=n_components_pca_val)
+        pca_model.fit(data_matrix_pca) # Fit on the data matrix
 
-        # Store results for visualization (and potentially in session state)
-        st.session_state['fpca_model'] = fpca
-        st.session_state['timepoints'] = timepoints # Store timepoints
+        # Store results for visualization
+        st.session_state['pca_model_sklearn'] = pca_model
+        st.session_state['timepoints_sklearn'] = timepoints
 
-        st.write("FPCA computation complete. Results are stored.")
-        
-        # Visualization of FPCA results
-        if 'fpca_model' in st.session_state and 'timepoints' in st.session_state:
-            fpca_model = st.session_state['fpca_model']
-            timepoints_fpca = st.session_state['timepoints']
+        st.write("PCA computation complete. Results are stored.")
 
-            mean_function = fpca_model.mean_
-            components = fpca_model.components_
+        # Visualization of PCA results
+        if 'pca_model_sklearn' in st.session_state and 'timepoints_sklearn' in st.session_state:
+            pca_sklearn = st.session_state['pca_model_sklearn']
+            timepoints_sklearn_vis = st.session_state['timepoints_sklearn']
 
-            st.subheader("Mean Function (FPCA)")
-            fig_mean, ax_mean = plt.subplots()
-            ax_mean.plot(timepoints_fpca, mean_function.data_matrix[0].flatten())
-            ax_mean.set_title("Mean Function")
-            ax_mean.set_xlabel("Timepoints")
-            ax_mean.set_ylabel("Value")
-            st.pyplot(fig_mean)
+            mean_function_sklearn = pca_sklearn.mean_ # This is the mean curve
+            components_sklearn = pca_sklearn.components_ # Rows are principal components
+            explained_variance_sklearn = pca_sklearn.explained_variance_ # Eigenvalues
+            explained_variance_ratio_sklearn = pca_sklearn.explained_variance_ratio_
 
-            if hasattr(fpca_model, 'explained_variance_ratio_'):
-                st.write("Explained Variance Ratio per Component:", 
-                         [f"{ratio:.2%}" for ratio in fpca_model.explained_variance_ratio_])
+            st.subheader("Mean Function (PCA)")
+            fig_mean_sk, ax_mean_sk = plt.subplots()
+            ax_mean_sk.plot(timepoints_sklearn_vis, mean_function_sklearn)
+            ax_mean_sk.set_title("Mean Function")
+            ax_mean_sk.set_xlabel("Timepoints")
+            ax_mean_sk.set_ylabel("Value")
+            st.pyplot(fig_mean_sk)
 
-            st.subheader("Principal Components (Eigenfunctions) and Modes of Variation")
-            if hasattr(fpca_model, 'explained_variance_'):
-                explained_variance = fpca_model.explained_variance_
-                for i, component in enumerate(components):
-                    fig_comp, ax_comp = plt.subplots()
-                    
-                    component_values = component.data_matrix[0].flatten()
-                    mean_values = mean_function.data_matrix[0].flatten()
-                    
-                    # Plot the component itself
-                    ax_comp.plot(timepoints_fpca, component_values, label=f"Component {i+1} (Eigenfunction)")
-                    
-                    # Get eigenvalue for scaling
-                    eigenvalue = explained_variance[i]
-                    scaled_effect = np.sqrt(eigenvalue) * component_values
-                    
-                    # Plot variations: mean +/- sqrt(eigenvalue) * component
-                    ax_comp.plot(timepoints_fpca, mean_values + scaled_effect, 
+            st.write("Explained Variance Ratio per Component:",
+                     [f"{ratio:.2%}" for ratio in explained_variance_ratio_sklearn])
+
+            st.subheader("Principal Components (Eigenvectors) and Modes of Variation")
+            for i in range(pca_sklearn.n_components_):
+                fig_comp_sk, ax_comp_sk = plt.subplots()
+
+                component_values_sk = components_sklearn[i] # Get the i-th component
+                eigenvalue_sk = explained_variance_sklearn[i]
+                scaled_effect_sk = np.sqrt(eigenvalue_sk) * component_values_sk
+
+                # Plot the component itself
+                ax_comp_sk.plot(timepoints_sklearn_vis, component_values_sk, label=f"Component {i+1} (Eigenvector)")
+
+                # Plot variations: mean +/- sqrt(eigenvalue) * component
+                ax_comp_sk.plot(timepoints_sklearn_vis, mean_function_sklearn + scaled_effect_sk,
                                  label=f"Mean + sqrt(λ_{i+1}) * Comp {i+1}", linestyle='--')
-                    ax_comp.plot(timepoints_fpca, mean_values - scaled_effect, 
+                ax_comp_sk.plot(timepoints_sklearn_vis, mean_function_sklearn - scaled_effect_sk,
                                  label=f"Mean - sqrt(λ_{i+1}) * Comp {i+1}", linestyle=':')
-                    
-                    title = f"Principal Component {i+1}"
-                    if hasattr(fpca_model, 'explained_variance_ratio_'):
-                        title += f" (Explains {fpca_model.explained_variance_ratio_[i]:.2%} variance)"
-                    ax_comp.set_title(title)
-                    ax_comp.set_xlabel("Timepoints")
-                    ax_comp.set_ylabel("Value")
-                    ax_comp.legend()
-                    st.pyplot(fig_comp)
-            else:
-                st.warning("Explained variance values are not available, cannot visualize component effects with proper scaling.")
-                # Fallback: plot components without scaled effects if explained_variance_ is missing
-                for i, component in enumerate(components):
-                    fig_comp, ax_comp = plt.subplots()
-                    ax_comp.plot(timepoints_fpca, component.data_matrix[0].flatten(), label=f"Component {i+1}")
-                    ax_comp.set_title(f"Principal Component {i+1}")
-                    ax_comp.set_xlabel("Timepoints")
-                    ax_comp.set_ylabel("Value")
-                    ax_comp.legend()
-                    st.pyplot(fig_comp)
-        
-        elif 'df_numeric' in locals() and not df_numeric.empty: 
-            st.info("FPCA computation complete, but results not found in session state. Please re-run FPCA if needed or check implementation.")
+
+                title_sk = f"Principal Component {i+1} (Explains {explained_variance_ratio_sklearn[i]:.2%} variance)"
+                ax_comp_sk.set_title(title_sk)
+                ax_comp_sk.set_xlabel("Timepoints")
+                ax_comp_sk.set_ylabel("Value")
+                ax_comp_sk.legend()
+                st.pyplot(fig_comp_sk)
+
+        elif 'df_numeric' in locals() and not df_numeric.empty:
+            st.info("PCA computation complete, but results not found in session state. Please re-run PCA if needed or check implementation.")
 
     elif 'df_numeric' not in locals() or df_numeric.empty:
-        st.info("Please upload data first to perform FPCA.")
-    else: 
-        st.warning("Timepoints for FPCA are not available. Please check data loading and feature engineering steps.")
-
+        st.info("Please upload data first to perform PCA.")
+    else:
+        st.warning("Timepoints for PCA are not available. Please check data loading and feature engineering steps.")
+        
     # ----------------------------- #
     # 📊 Clustering
     # ----------------------------- #
