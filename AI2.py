@@ -126,35 +126,68 @@ if file:
                 explained_variance_sklearn = pca_sklearn.explained_variance_
                 explained_variance_ratio_sklearn = pca_sklearn.explained_variance_ratio_
 
-                st.subheader("Mean Function (PCA)")
-                fig_mean_sk, ax_mean_sk = plt.subplots()
+                st.subheader("Mean Function and Principal Components (PCA)")
+                st.write("Explained Variance Ratio per Component:",
+                         [f"{ratio:.2%}" for ratio in explained_variance_ratio_sklearn])
+
+                # Determine layout: how many plots per row
+                plots_per_row = 3 # You can adjust this
+                num_components_to_plot = pca_sklearn.n_components_
+                
+                # We will plot the mean function + n_components
+                total_plots = 1 + num_components_to_plot 
+                num_rows = (total_plots + plots_per_row - 1) // plots_per_row # Ceiling division
+
+                # Create a figure with subplots
+                # Adjust figsize as needed for better appearance
+                fig_pca_grid, axes = plt.subplots(num_rows, plots_per_row, 
+                                                  figsize=(plots_per_row * 5, num_rows * 4), 
+                                                  squeeze=False) # squeeze=False ensures axes is always 2D
+                axes_flat = axes.flatten() # Flatten to easily iterate
+
+                # --- Plot 1: Mean Function ---
+                ax_mean_sk = axes_flat[0]
                 ax_mean_sk.plot(timepoints_sklearn_vis, mean_function_sklearn)
                 ax_mean_sk.set_title("Mean Function")
                 ax_mean_sk.set_xlabel("Timepoints")
                 ax_mean_sk.set_ylabel("Value")
-                st.pyplot(fig_mean_sk)
+                ax_mean_sk.tick_params(axis='x', labelsize=8)
+                ax_mean_sk.tick_params(axis='y', labelsize=8)
 
-                st.write("Explained Variance Ratio per Component:",
-                         [f"{ratio:.2%}" for ratio in explained_variance_ratio_sklearn])
 
-                st.subheader("Principal Components (Eigenvectors) and Modes of Variation")
-                for i in range(pca_sklearn.n_components_):
-                    fig_comp_sk, ax_comp_sk = plt.subplots()
+                # --- Plot 2 to N+1: Principal Components and Modes of Variation ---
+                for i in range(num_components_to_plot):
+                    ax_comp_sk = axes_flat[i + 1] # Start from the second subplot
+
                     component_values_sk = components_sklearn[i]
                     eigenvalue_sk = explained_variance_sklearn[i]
                     scaled_effect_sk = np.sqrt(eigenvalue_sk) * component_values_sk
 
-                    ax_comp_sk.plot(timepoints_sklearn_vis, component_values_sk, label=f"Component {i+1} (Eigenvector)")
+                    # Plot the component itself (optional, can make plots busy)
+                    # ax_comp_sk.plot(timepoints_sklearn_vis, component_values_sk, label=f"Comp {i+1} (Eigenvector)", color='gray', alpha=0.7)
+
+                    # Plot variations: mean +/- sqrt(eigenvalue) * component
+                    ax_comp_sk.plot(timepoints_sklearn_vis, mean_function_sklearn, 
+                                     label="Mean", color='black', linestyle='-', linewidth=0.8, alpha=0.6)
                     ax_comp_sk.plot(timepoints_sklearn_vis, mean_function_sklearn + scaled_effect_sk,
-                                     label=f"Mean + sqrt(λ_{i+1}) * Comp {i+1}", linestyle='--')
+                                     label=f"Mean + Mode {i+1}", linestyle='--')
                     ax_comp_sk.plot(timepoints_sklearn_vis, mean_function_sklearn - scaled_effect_sk,
-                                     label=f"Mean - sqrt(λ_{i+1}) * Comp {i+1}", linestyle=':')
-                    title_sk = f"Principal Component {i+1} (Explains {explained_variance_ratio_sklearn[i]:.2%} variance)"
-                    ax_comp_sk.set_title(title_sk)
-                    ax_comp_sk.set_xlabel("Timepoints")
-                    ax_comp_sk.set_ylabel("Value")
-                    ax_comp_sk.legend()
-                    st.pyplot(fig_comp_sk)
+                                     label=f"Mean - Mode {i+1}", linestyle=':')
+
+                    title_sk = f"PC {i+1} ({explained_variance_ratio_sklearn[i]:.1%} var)"
+                    ax_comp_sk.set_title(title_sk, fontsize=10)
+                    ax_comp_sk.set_xlabel("Timepoints", fontsize=8)
+                    ax_comp_sk.set_ylabel("Value", fontsize=8)
+                    ax_comp_sk.legend(fontsize=7)
+                    ax_comp_sk.tick_params(axis='x', labelsize=8)
+                    ax_comp_sk.tick_params(axis='y', labelsize=8)
+                
+                # Hide any unused subplots if the grid is not perfectly filled
+                for j in range(total_plots, len(axes_flat)):
+                    fig_pca_grid.delaxes(axes_flat[j])
+
+                plt.tight_layout() # Adjust subplot params for a tight layout
+                st.pyplot(fig_pca_grid)
         else:
             st.info("PCA results not available for visualization. Please ensure PCA ran successfully.")
     else:
