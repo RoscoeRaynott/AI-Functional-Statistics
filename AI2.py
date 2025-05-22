@@ -3,11 +3,13 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering # Added DBSCAN and AgglomerativeClustering
-from sklearn.mixture import GaussianMixture # Added GaussianMixture
+from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
+from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
 from sklearn.covariance import EllipticEnvelope
-from sklearn.decomposition import PCA
+from sklearn.decomposition import PCA # Import PCA from scikit-learn
+import json # For formatting summary stats in report
+
 # Make sure llm_utils is updated with the correct model ID
 # Assuming llm_utils is a local file or part of your environment
 try:
@@ -21,7 +23,7 @@ except ImportError:
     def explain_outlier(*args, **kwargs): return "LLM functionality not available."
 
 
-st.set_page_config(page_title="Functional Data Clustering", layout="wide")
+st.set_page_config(page_title="Functional Data Analysis", layout="wide")
 st.title("📈 Functional Data Analysis with Clustering and LLMs")
 
 # Load API key securely
@@ -30,48 +32,48 @@ api_key = st.secrets.get('OPENROUTER_API_KEY', 'sk-your-default-api-key') # Use 
 # ----------------------------- #
 # 📁 Upload Data
 # ----------------------------- #
-file = st.file_uploader("Upload a CSV file with functional data (rows = curves)")
+file = st.file_uploader("Upload a CSV file with functional data (rows = curves, columns = timepoints/features)")
 if file:
-    df = pd.read_csv(file)
+    df_original = pd.read_csv(file) # Keep original for reference if needed
+    df = df_original.copy() # Work with a copy
     st.write("Data Preview:", df.head())
 
     # ----------------------------- #
-    # ⚙️ Feature Engineering (Optional smoothing, derivs can be added here)
+    # ⚙️ Feature Engineering
     # ----------------------------- #
     # Ensure timepoints are numeric if possible, otherwise use index
     try:
-        # Attempt to convert columns to float, handling multi-index or string columns
         if isinstance(df.columns, pd.MultiIndex):
-            # This case is complex and depends on your multi-index structure.
-            # For simplicity, if multi-index, we'll try to get the lowest level.
             try:
-                timepoints = df.columns.get_level_values(-1).astype(float)
+                timepoints = np.sort(df.columns.get_level_values(-1).astype(float))
             except ValueError:
                 st.warning("MultiIndex columns are not fully numeric. Using column index as timepoints.")
                 timepoints = np.arange(df.shape[1])
         else:
-            timepoints = df.columns.astype(float)
+            timepoints = np.sort(df.columns.astype(float))
     except ValueError:
         st.warning("CSV columns are not numeric. Using column index as timepoints.")
         timepoints = np.arange(df.shape[1])
 
-    # Ensure df does not contain non-numeric columns before scaling/clustering
-    # This might happen if the first column is an ID or label.
-    # We'll assume all columns are timepoints for now, as per "rows = curves"
-    # If the first column is an ID, you might do: df_numeric = df.iloc[:, 1:]
-    # For now, let's just make sure df is all numeric for scaling
+    # Ensure df for processing is purely numeric
     df_numeric = df.select_dtypes(include=np.number)
+    if df_numeric.shape[1] < df.shape[1]:
+        st.warning(f"Non-numeric columns detected and dropped for numerical analysis. Original columns: {df.shape[1]}, Numeric columns: {df_numeric.shape[1]}")
+    
     if df_numeric.empty:
-        st.error("No numeric data found in the CSV for clustering. Please check your file format.")
+        st.error("No numeric data found in the CSV for analysis. Please check your file format.")
         st.stop()
-    if df_numeric.shape[1] != df.shape[1]:
-        st.warning("Non-numeric columns detected and dropped for clustering.")
-        df = df_numeric # Update df to only contain numeric columns
+    
+    # Handle NaNs in numeric data
+    if df_numeric.isnull().values.any():
+        st.warning("NaNs detected in numeric data. Filling with column means for analysis.")
+        df_numeric = df_numeric.fillna(df_numeric.mean())
+
 
     # ----------------------------- #
-    # 🔬 Functional Principal Component Analysis (FPCA) - using sklearn.PCA
+    # 🔬 Principal Component Analysis (PCA on Curves) - using sklearn.PCA
     # ----------------------------- #
-    st.subheader("🔬 Functional Principal Component Analysis (PCA on Curves)")
+    st.subheader("🔬 Principal Component Analysis (PCA on Curves)")
 
     st.markdown("""
     Principal Component Analysis (PCA) applied to functional data (curves) helps identify the main modes of variation.
@@ -80,330 +82,314 @@ if file:
     - **Modes of Variation**: The plots showing "Mean +/- sqrt(λ) * Component" illustrate how the data varies around the mean. Each component captures a certain percentage of the total variance.
     """)
 
-    if 'df_numeric' in locals() and not df_numeric.empty and 'timepoints' in locals():
-        data_matrix_pca = df_numeric.values # Use the raw numeric data
+    if not df_numeric.empty:
+        data_matrix_pca = df_numeric.values
 
         # Slider for number of components
-        # Max components is min(n_samples, n_features) for sklearn.PCA
-        max_pca_components = min(data_matrix_pca.shape[0], data_matrix_pca.shape[1])
-        max_pca_components = min(10, max_pca_components) # Practical limit for visualization
-        max_pca_components = max(1, max_pca_components) # Ensure at least 1
+        slider_max_val = min(data_matrix_pca.shape[0], data_matrix_pca.shape[1])
+        slider_max_val = min(10, slider_max_val) # User-imposed practical limit
+        slider_max_val = max(1, slider_max_val) # Ensure slider_max_val is at least 1
 
-        default_pca_components = min(3, max_pca_components)
-        default_pca_components = max(1, default_pca_components)
-
+        slider_default_val = min(3, slider_max_val)
+        slider_default_val = max(1, slider_default_val) # Ensure default is at least 1
 
         n_components_pca_val = st.slider(
             "Number of Principal Components (PCA)",
             1,
-            max_pca_components,
-            default_pca_components
+            slider_max_val,
+            slider_default_val
         )
 
-        # Perform PCA
-        pca_model = PCA(n_components=n_components_pca_val)
-        pca_model.fit(data_matrix_pca) # Fit on the data matrix
+        try:
+            pca_sklearn_model = PCA(n_components=n_components_pca_val)
+            pca_sklearn_model.fit(data_matrix_pca)
 
-        # Store results for visualization
-        st.session_state['pca_model_sklearn'] = pca_model
-        st.session_state['timepoints_sklearn'] = timepoints
+            st.session_state['pca_sklearn_model'] = pca_sklearn_model
+            st.session_state['timepoints_sklearn'] = timepoints # Use the derived timepoints
+            st.success("PCA computation complete.")
 
-        st.write("PCA computation complete. Results are stored.")
+        except Exception as e:
+            st.error(f"PCA fitting failed: {e}")
+            st.session_state.pop('pca_sklearn_model', None)
 
         # Visualization of PCA results
-        if 'pca_model_sklearn' in st.session_state and 'timepoints_sklearn' in st.session_state:
-            pca_sklearn = st.session_state['pca_model_sklearn']
+        if 'pca_sklearn_model' in st.session_state and 'timepoints_sklearn' in st.session_state:
+            pca_sklearn = st.session_state['pca_sklearn_model']
             timepoints_sklearn_vis = st.session_state['timepoints_sklearn']
 
-            mean_function_sklearn = pca_sklearn.mean_ # This is the mean curve
-            components_sklearn = pca_sklearn.components_ # Rows are principal components
-            explained_variance_sklearn = pca_sklearn.explained_variance_ # Eigenvalues
-            explained_variance_ratio_sklearn = pca_sklearn.explained_variance_ratio_
+            # Ensure timepoints align with component feature length
+            if len(timepoints_sklearn_vis) != pca_sklearn.components_.shape[1]:
+                st.error(f"Mismatch in timepoints length ({len(timepoints_sklearn_vis)}) and PCA component features ({pca_sklearn.components_.shape[1]}). Please check data processing.")
+            else:
+                mean_function_sklearn = pca_sklearn.mean_
+                components_sklearn = pca_sklearn.components_
+                explained_variance_sklearn = pca_sklearn.explained_variance_
+                explained_variance_ratio_sklearn = pca_sklearn.explained_variance_ratio_
 
-            st.subheader("Mean Function (PCA)")
-            fig_mean_sk, ax_mean_sk = plt.subplots()
-            ax_mean_sk.plot(timepoints_sklearn_vis, mean_function_sklearn)
-            ax_mean_sk.set_title("Mean Function")
-            ax_mean_sk.set_xlabel("Timepoints")
-            ax_mean_sk.set_ylabel("Value")
-            st.pyplot(fig_mean_sk)
+                st.subheader("Mean Function (PCA)")
+                fig_mean_sk, ax_mean_sk = plt.subplots()
+                ax_mean_sk.plot(timepoints_sklearn_vis, mean_function_sklearn)
+                ax_mean_sk.set_title("Mean Function")
+                ax_mean_sk.set_xlabel("Timepoints")
+                ax_mean_sk.set_ylabel("Value")
+                st.pyplot(fig_mean_sk)
 
-            st.write("Explained Variance Ratio per Component:",
-                     [f"{ratio:.2%}" for ratio in explained_variance_ratio_sklearn])
+                st.write("Explained Variance Ratio per Component:",
+                         [f"{ratio:.2%}" for ratio in explained_variance_ratio_sklearn])
 
-            st.subheader("Principal Components (Eigenvectors) and Modes of Variation")
-            for i in range(pca_sklearn.n_components_):
-                fig_comp_sk, ax_comp_sk = plt.subplots()
+                st.subheader("Principal Components (Eigenvectors) and Modes of Variation")
+                for i in range(pca_sklearn.n_components_):
+                    fig_comp_sk, ax_comp_sk = plt.subplots()
+                    component_values_sk = components_sklearn[i]
+                    eigenvalue_sk = explained_variance_sklearn[i]
+                    scaled_effect_sk = np.sqrt(eigenvalue_sk) * component_values_sk
 
-                component_values_sk = components_sklearn[i] # Get the i-th component
-                eigenvalue_sk = explained_variance_sklearn[i]
-                scaled_effect_sk = np.sqrt(eigenvalue_sk) * component_values_sk
-
-                # Plot the component itself
-                ax_comp_sk.plot(timepoints_sklearn_vis, component_values_sk, label=f"Component {i+1} (Eigenvector)")
-
-                # Plot variations: mean +/- sqrt(eigenvalue) * component
-                ax_comp_sk.plot(timepoints_sklearn_vis, mean_function_sklearn + scaled_effect_sk,
-                                 label=f"Mean + sqrt(λ_{i+1}) * Comp {i+1}", linestyle='--')
-                ax_comp_sk.plot(timepoints_sklearn_vis, mean_function_sklearn - scaled_effect_sk,
-                                 label=f"Mean - sqrt(λ_{i+1}) * Comp {i+1}", linestyle=':')
-
-                title_sk = f"Principal Component {i+1} (Explains {explained_variance_ratio_sklearn[i]:.2%} variance)"
-                ax_comp_sk.set_title(title_sk)
-                ax_comp_sk.set_xlabel("Timepoints")
-                ax_comp_sk.set_ylabel("Value")
-                ax_comp_sk.legend()
-                st.pyplot(fig_comp_sk)
-
-        elif 'df_numeric' in locals() and not df_numeric.empty:
-            st.info("PCA computation complete, but results not found in session state. Please re-run PCA if needed or check implementation.")
-
-    elif 'df_numeric' not in locals() or df_numeric.empty:
-        st.info("Please upload data first to perform PCA.")
+                    ax_comp_sk.plot(timepoints_sklearn_vis, component_values_sk, label=f"Component {i+1} (Eigenvector)")
+                    ax_comp_sk.plot(timepoints_sklearn_vis, mean_function_sklearn + scaled_effect_sk,
+                                     label=f"Mean + sqrt(λ_{i+1}) * Comp {i+1}", linestyle='--')
+                    ax_comp_sk.plot(timepoints_sklearn_vis, mean_function_sklearn - scaled_effect_sk,
+                                     label=f"Mean - sqrt(λ_{i+1}) * Comp {i+1}", linestyle=':')
+                    title_sk = f"Principal Component {i+1} (Explains {explained_variance_ratio_sklearn[i]:.2%} variance)"
+                    ax_comp_sk.set_title(title_sk)
+                    ax_comp_sk.set_xlabel("Timepoints")
+                    ax_comp_sk.set_ylabel("Value")
+                    ax_comp_sk.legend()
+                    st.pyplot(fig_comp_sk)
+        else:
+            st.info("PCA results not available for visualization. Please ensure PCA ran successfully.")
     else:
-        st.warning("Timepoints for PCA are not available. Please check data loading and feature engineering steps.")
-        
+        st.info("Please upload data with numeric columns to perform PCA.")
+
+
     # ----------------------------- #
     # 📊 Clustering
     # ----------------------------- #
     st.subheader("📊 Clustering Options")
-    clustering_method = st.selectbox(
-        "Select Clustering Algorithm",
-        options=["k-means", "dbscan", "gmm", "hierarchical"]
-    )
-    
-    n_clusters_input = None # Initialize to None for methods that don't use it directly
-    if clustering_method == "k-means":
-        n_clusters_input = st.slider("Number of clusters (for k-means)", 2, 10, 3)
-    elif clustering_method == "gmm":
-        n_clusters_input = st.slider("Number of components (for GMM)", 2, 10, 3)
-    elif clustering_method == "hierarchical":
-        n_clusters_input = st.slider("Number of clusters (for hierarchical)", 2, 10, 3)
-    
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(df) # Scale the numeric data
+    # Use df_numeric for clustering input
+    if not df_numeric.empty:
+        clustering_method = st.selectbox(
+            "Select Clustering Algorithm",
+            options=["k-means", "dbscan", "gmm", "hierarchical"]
+        )
 
-    # Initialize cluster labels (default to a single cluster or noise if no valid clustering occurs)
-    clusters = np.array([0] * len(X_scaled)) # Default to all in one cluster
-    
-    # Choose and fit model
-    model = None
-    if clustering_method == "k-means":
-        if n_clusters_input is not None:
-            model = KMeans(n_clusters=n_clusters_input, random_state=42, n_init=10)
-    elif clustering_method == "dbscan":
-        eps = st.slider("Epsilon (DBSCAN)", 0.1, 2.0, 0.5)
-        min_samples = st.slider("Min Samples (DBSCAN)", 2, 10, 5)
-        model = DBSCAN(eps=eps, min_samples=min_samples)
-    elif clustering_method == "gmm":
-        if n_clusters_input is not None:
+        n_clusters_input = None
+        if clustering_method == "k-means":
+            n_clusters_input = st.slider("Number of clusters (for k-means)", 2, min(10, len(df_numeric)), 3)
+        elif clustering_method == "gmm":
+            n_clusters_input = st.slider("Number of components (for GMM)", 2, min(10, len(df_numeric)), 3)
+        elif clustering_method == "hierarchical":
+            n_clusters_input = st.slider("Number of clusters (for hierarchical)", 2, min(10, len(df_numeric)), 3)
+
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(df_numeric)
+
+        clusters = np.array([0] * len(X_scaled))
+        model = None
+        if clustering_method == "k-means" and n_clusters_input:
+            model = KMeans(n_clusters=n_clusters_input, random_state=42, n_init='auto')
+        elif clustering_method == "dbscan":
+            eps = st.slider("Epsilon (DBSCAN)", 0.1, 5.0, 0.5, step=0.1)
+            min_samples = st.slider("Min Samples (DBSCAN)", 2, 20, 5)
+            model = DBSCAN(eps=eps, min_samples=min_samples)
+        elif clustering_method == "gmm" and n_clusters_input:
             model = GaussianMixture(n_components=n_clusters_input, random_state=42)
-    elif clustering_method == "hierarchical":
-        if n_clusters_input is not None:
+        elif clustering_method == "hierarchical" and n_clusters_input:
             linkage = st.selectbox("Linkage Criterion", ["ward", "complete", "average", "single"])
             model = AgglomerativeClustering(n_clusters=n_clusters_input, linkage=linkage)
 
-    if model: # Only fit if a model was successfully initialized
-        model.fit(X_scaled)
-        
-        # Extract cluster labels
-        if hasattr(model, 'labels_'):
-            clusters = model.labels_
-        elif hasattr(model, 'predict'):
-            clusters = model.predict(X_scaled)
-    else:
-        st.warning("Please select valid clustering parameters.")
-        # If no model was fit or parameters were invalid, clusters remains default 0
-        st.stop() # Stop execution if no valid clustering happened
-
-    df["Cluster"] = clusters
-    
-    # Optional: Exclude noise points for stats (e.g., DBSCAN where -1 is noise)
-    valid_clusters = [cid for cid in np.unique(clusters) if cid != -1]
-    
-    st.subheader("📉 Clustered Functional Curves")
-    fig, ax = plt.subplots()
-    num_actual_clusters = len(valid_clusters)
-    
-    if num_actual_clusters > 0:
-        for i, cluster_id in enumerate(valid_clusters):
-            cluster_data = df[df["Cluster"] == cluster_id].drop("Cluster", axis=1)
-            
-            # Dynamically determine color. Avoid division by zero if only one valid cluster.
-            # Using i directly ensures a unique color for each valid cluster.
-            if num_actual_clusters > 1:
-                color_index = i / (num_actual_clusters - 1)
-            else:
-                color_index = 0.5 # A default color if only one cluster
-            
-            color = plt.cm.viridis(color_index)
-            
-            for j, row in enumerate(cluster_data.values):
-                ax.plot(timepoints, row, alpha=0.4, color=color, label=f"Cluster {int(cluster_id)}" if j == 0 else "")
-        ax.legend()
-    else:
-        st.info("No distinct clusters formed or all points are noise (e.g., DBSCAN).")
-    
-    st.pyplot(fig)
-
-    # ----------------------------- #
-    # 📦 Cluster Summary Stats
-    # ----------------------------- #
-    cluster_summary = {}
-    for cluster_id in valid_clusters:
-        cluster_data = df[df["Cluster"] == cluster_id].drop("Cluster", axis=1)
-        # Ensure cluster_data is not empty before calculating statistics
-        if not cluster_data.empty:
-            all_points = cluster_data.values.flatten()
-            summary = {
-                "cluster_id": int(cluster_id), # Ensure cluster ID is integer
-                "num_curves": len(cluster_data),
-                "mean_value": float(np.mean(all_points)),
-                "std_value": float(np.std(all_points)),
-                "min_value": float(np.min(all_points)),
-                "max_value": float(np.max(all_points)),
-                "mean_curve": cluster_data.mean().tolist(), # Mean curve as a list
-                "method": clustering_method  # Useful for LLM explanations
-            }
-            cluster_summary[cluster_id] = summary
+        if model:
+            try:
+                model.fit(X_scaled)
+                if hasattr(model, 'labels_'):
+                    clusters = model.labels_
+                elif hasattr(model, 'predict'): # GMM uses predict
+                    clusters = model.predict(X_scaled)
+            except Exception as e:
+                st.error(f"Clustering failed: {e}")
+                st.stop()
         else:
-            st.warning(f"Cluster {cluster_id} is empty and will be skipped in summary.")
+            st.warning("Please select valid clustering parameters.")
+            st.stop()
 
-    # ----------------------------- #
-    # 🤖 LLM Comparison
-    # ----------------------------- #
-    if st.button("Compare Clusters via LLM"):
-        if cluster_summary: # Ensure there are clusters to compare
-            st.subheader("🔍 LLM Comparison of Clusters")
-            comparison = compare_clusters(cluster_summary, api_key, clustering_method)
-            st.markdown(comparison)
+        # Create a DataFrame for plotting that includes cluster labels
+        df_clustered = df_numeric.copy()
+        df_clustered["Cluster"] = clusters
+
+        valid_clusters = sorted([cid for cid in np.unique(clusters) if cid != -1]) # Exclude noise
+
+        st.subheader("📉 Clustered Functional Curves")
+        fig_cluster_plot, ax_cluster_plot = plt.subplots()
+        if num_actual_clusters := len(valid_clusters): # Python 3.8+ walrus operator
+            palette = sns.color_palette("viridis", num_actual_clusters)
+            for i, cluster_id in enumerate(valid_clusters):
+                cluster_data_plot = df_clustered[df_clustered["Cluster"] == cluster_id].drop("Cluster", axis=1)
+                color = palette[i]
+                for j, row_values in enumerate(cluster_data_plot.values):
+                    ax_cluster_plot.plot(timepoints, row_values, alpha=0.4, color=color, label=f"Cluster {int(cluster_id)}" if j == 0 else "")
+            if num_actual_clusters > 0 : ax_cluster_plot.legend()
         else:
-            st.info("No valid clusters found for comparison.")
+            st.info("No distinct clusters formed (excluding noise).")
+        st.pyplot(fig_cluster_plot)
 
-    # ----------------------------- #
-    # 📄 Generate Markdown Report
-    # ----------------------------- #
-    if st.button("Generate LLM Explanations for Each Cluster"):
-         st.subheader("🧠 LLM Insights per Cluster")
-         cluster_explanations = {}
-         if cluster_summary:
-             for cid, stats in cluster_summary.items():
-                 with st.spinner(f"Getting LLM explanation for Cluster {cid}..."):
-                     explanation = explain_cluster(stats, api_key) # Pass the stats dict
-                     cluster_explanations[cid] = explanation
-                     st.markdown(f"**Cluster {int(cid)}:** {explanation}")
-             st.session_state['cluster_explanations'] = cluster_explanations # Store for download
-         else:
-             st.info("No valid clusters to explain.")
-
-    # Download report button (uses potentially generated explanations)
-    if st.button("Download Cluster Report (Markdown)"):
-        # Check if explanations are already in session state, otherwise regenerate
-        if 'cluster_explanations' in st.session_state and st.session_state['cluster_explanations']:
-            cluster_explanations_for_report = st.session_state['cluster_explanations']
+        # ----------------------------- #
+        # 📦 Cluster Summary Stats
+        # ----------------------------- #
+        cluster_summary = {}
+        if num_actual_clusters > 0:
+            for cluster_id in valid_clusters:
+                cluster_data_stats = df_clustered[df_clustered["Cluster"] == cluster_id].drop("Cluster", axis=1)
+                if not cluster_data_stats.empty:
+                    all_points_stats = cluster_data_stats.values.flatten()
+                    summary = {
+                        "cluster_id": int(cluster_id),
+                        "num_curves": len(cluster_data_stats),
+                        "mean_value": float(np.mean(all_points_stats)),
+                        "std_value": float(np.std(all_points_stats)),
+                        "min_value": float(np.min(all_points_stats)),
+                        "max_value": float(np.max(all_points_stats)),
+                        "mean_curve": cluster_data_stats.mean().tolist(),
+                        "method": clustering_method
+                    }
+                    cluster_summary[cluster_id] = summary
+                else:
+                    st.warning(f"Cluster {cluster_id} is empty and will be skipped in summary.")
+            st.session_state['cluster_summary'] = cluster_summary # Store for LLM and report
         else:
-            with st.spinner("Generating explanations for report (may take a moment)..."):
-                cluster_explanations_for_report = {cid: explain_cluster(stats, api_key) for cid, stats in cluster_summary.items() if stats}
-            st.session_state['cluster_explanations'] = cluster_explanations_for_report # Store them
+            st.info("No valid clusters to summarize.")
+            st.session_state.pop('cluster_summary', None)
 
-        def generate_report(summary, explanations):
-            report = "# Functional Data Cluster Report\n\n"
-            if not summary:
-                report += "No cluster data to report."
+
+        # ----------------------------- #
+        # 🤖 LLM Comparison & Explanations
+        # ----------------------------- #
+        if 'cluster_summary' in st.session_state and st.session_state['cluster_summary']:
+            current_cluster_summary = st.session_state['cluster_summary']
+            if st.button("Compare Clusters via LLM"):
+                st.subheader("🔍 LLM Comparison of Clusters")
+                comparison = compare_clusters(current_cluster_summary, api_key, clustering_method)
+                st.markdown(comparison)
+
+            if st.button("Generate LLM Explanations for Each Cluster"):
+                 st.subheader("🧠 LLM Insights per Cluster")
+                 cluster_explanations = {}
+                 for cid, stats in current_cluster_summary.items():
+                     with st.spinner(f"Getting LLM explanation for Cluster {cid}..."):
+                         explanation = explain_cluster(stats, api_key)
+                         cluster_explanations[cid] = explanation
+                         st.markdown(f"**Cluster {int(cid)}:** {explanation}")
+                 st.session_state['cluster_explanations'] = cluster_explanations
+
+        # ----------------------------- #
+        # 📄 Generate Markdown Report
+        # ----------------------------- #
+        if st.button("Download Cluster Report (Markdown)"):
+            report_summary = st.session_state.get('cluster_summary', {})
+            report_explanations = st.session_state.get('cluster_explanations', {})
+            
+            if not report_explanations and report_summary : # If explanations not generated yet for the report
+                 with st.spinner("Generating explanations for report..."):
+                    report_explanations = {cid: explain_cluster(stats, api_key) for cid, stats in report_summary.items() if stats}
+                    st.session_state['cluster_explanations'] = report_explanations
+
+
+            def generate_report(summary_data, explanations_data):
+                report = "# Functional Data Cluster Report\n\n"
+                if not summary_data:
+                    report += "No cluster data to report."
+                    return report
+                for cid_key in sorted(summary_data.keys()):
+                    stats = summary_data[cid_key]
+                    report += f"## Cluster {stats['cluster_id']}\n\n"
+                    report += f"**Clustering Method:** {stats.get('method', 'N/A')}\n"
+                    report += f"**Number of Curves:** {stats['num_curves']}\n\n"
+                    report += f"**Aggregate Statistics:**\n"
+                    report += f"- Mean Value (all points): {stats['mean_value']:.2f}\n"
+                    report += f"- Std Value (all points): {stats['std_value']:.2f}\n"
+                    report += f"- Min Value (all points): {stats['min_value']:.2f}\n"
+                    report += f"- Max Value (all points): {stats['max_value']:.2f}\n\n"
+                    # report += f"**Mean Curve Values (first 5):** {stats['mean_curve'][:5]}\n\n" # Example
+                    report += f"**LLM Insight:** {explanations_data.get(cid_key, 'N/A')}\n\n"
                 return report
-            for cid_key in sorted(summary.keys()): # Sort by cluster ID
-                stats = summary[cid_key]
-                report += f"## Cluster {stats['cluster_id']}\n\n"
-                report += f"**Summary Stats:**\n```json\n{json.dumps(stats, indent=2)}\n```\n\n" # Use json.dumps for clean formatting
-                report += f"**LLM Insight:** {explanations.get(cid_key, 'N/A')}\n\n"
-                # To include mean curve plots: This would require saving plots as images
-                # and embedding them, which is more complex for a markdown download.
-                # For a markdown-only report, describing the curve is usually enough.
-            return report
 
-        import json # Import json for dumps
-        report_md = generate_report(cluster_summary, cluster_explanations_for_report)
-        st.download_button("Download Report", report_md, file_name="functional_data_cluster_report.md")
+            report_md_content = generate_report(report_summary, report_explanations)
+            st.download_button("Download Report", report_md_content, file_name="functional_data_cluster_report.md", mime="text/markdown")
 
 
-    # ----------------------------- #
-    # 💬 Ask a Question
-    # ----------------------------- #
-    st.subheader("💬 Ask a Question About Your Data")
-    user_query = st.text_input("Ask something like: 'Which cluster has the steepest rise?'" )
-    if st.button("Ask LLM"):
-        if user_query.strip() and cluster_summary:
-            answer = answer_user_query(cluster_summary, user_query, api_key)
-            st.markdown("**LLM Response:**")
-            st.write(answer)
-        else:
-            st.warning("Please enter a question and ensure clustering has been performed.")
-
-
-    # ----------------------------- #
-    # 🔥 Heatmap
-    # ----------------------------- #
-    st.subheader("📊 Heatmap of Functional Curves")
-    # Ensure 'Cluster' column exists and df is not empty after potential filtering
-    if "Cluster" in df.columns and not df.empty:
-        sorted_df = df.sort_values("Cluster")
-        fig, ax = plt.subplots(figsize=(10, 6))
-        # Drop 'Cluster' column before plotting heatmap
-        sns.heatmap(sorted_df.drop("Cluster", axis=1), cmap="viridis", ax=ax, cbar=True)
-        ax.set_xlabel("Timepoints")
-        ax.set_ylabel("Curve Index (Sorted by Cluster)")
-        st.pyplot(fig)
-    else:
-        st.info("No data available to generate heatmap after clustering.")
-
-
-    # ----------------------------- #
-    # 🚨 Outlier Detection
-    # ----------------------------- #
-    st.subheader("🚨 Outlier Detection in Functional Data")
-    try:
-        # Create a copy to avoid SettingWithCopyWarning
-        df_for_outliers = df.copy()
-        X = df_for_outliers.drop(columns=["Cluster", "Outlier"], errors="ignore")
-        
-        if len(X) > 10:
-            # EllipticEnvelope assumes Gaussian distribution, which might not fit functional data well
-            # Consider other methods like IsolationForest or OneClassSVM for robustness in functional data.
-            # For this example, keeping EllipticEnvelope as per original code.
-            envelope = EllipticEnvelope(contamination=0.1, random_state=42)
-            envelope.fit(X) # Fit on X
-            df_for_outliers["Outlier"] = envelope.predict(X) == -1
-            num_outliers = df_for_outliers['Outlier'].sum()
-            st.write(f"Detected {num_outliers} outliers.")
-
-            if num_outliers > 0:
-                if st.checkbox("Show Outlier Curves"):
-                    fig, ax = plt.subplots()
-                    outlier_data = df_for_outliers[df_for_outliers["Outlier"]].drop(["Cluster", "Outlier"], axis=1)
-                    if not outlier_data.empty: # Ensure there's data to plot
-                        for i, row in outlier_data.iterrows():
-                            # Label only first outlier for simplicity in legend
-                            ax.plot(timepoints, row.values, color="orange", alpha=0.7, label=f"Outlier {i}" if i == outlier_data.index[0] else "")
-                        ax.legend()
-                    else:
-                        st.info("No outlier curves to display.") # Should not happen if num_outliers > 0
-                    st.pyplot(fig)
-
-                if st.button("Explain Outliers with LLM"):
-                    outlier_curves = df_for_outliers[df_for_outliers["Outlier"]].drop(["Cluster", "Outlier"], axis=1)
-                    if not outlier_curves.empty:
-                        for i, row in outlier_curves.iterrows():
-                            # Convert series to a dictionary for LLM input
-                            curve_data = row.to_dict()
-                            with st.spinner(f"Getting LLM explanation for Outlier {i}..."):
-                                explanation = explain_outlier(curve_data, api_key)
-                                st.markdown(f"**Outlier {i}:** {explanation}")
-                    else:
-                        st.info("No outliers detected to explain.")
+        # ----------------------------- #
+        # 💬 Ask a Question
+        # ----------------------------- #
+        st.subheader("💬 Ask a Question About Your Data")
+        user_query = st.text_input("Ask something like: 'Which cluster has the steepest rise?'")
+        if st.button("Ask LLM"):
+            query_summary = st.session_state.get('cluster_summary', {})
+            if user_query.strip() and query_summary:
+                answer = answer_user_query(query_summary, user_query, api_key)
+                st.markdown("**LLM Response:**")
+                st.write(answer)
             else:
-                 st.info("No outliers detected.")
+                st.warning("Please enter a question and ensure clustering has been performed and summary is available.")
 
+        # ----------------------------- #
+        # 🔥 Heatmap
+        # ----------------------------- #
+        st.subheader("🔥 Heatmap of Functional Curves")
+        if "Cluster" in df_clustered.columns and not df_clustered.empty:
+            # Ensure only numeric data goes to heatmap, excluding the 'Cluster' column itself
+            heatmap_data = df_clustered.sort_values("Cluster").drop("Cluster", axis=1)
+            fig_heatmap, ax_heatmap = plt.subplots(figsize=(10, 6))
+            sns.heatmap(heatmap_data, cmap="viridis", ax=ax_heatmap, cbar=True, yticklabels=False) # yticklabels=False for cleaner look with many curves
+            ax_heatmap.set_xlabel("Timepoints")
+            ax_heatmap.set_ylabel("Curve Index (Sorted by Cluster)")
+            st.pyplot(fig_heatmap)
+        else:
+            st.info("No data available to generate heatmap after clustering.")
+
+        # ----------------------------- #
+        # 🚨 Outlier Detection
+        # ----------------------------- #
+        st.subheader("🚨 Outlier Detection in Functional Data")
+        # Use df_numeric for outlier detection as it's purely numerical
+        if len(df_numeric) > 10: # Need enough samples
+            try:
+                envelope = EllipticEnvelope(contamination=0.1, random_state=42)
+                outlier_predictions = envelope.fit_predict(df_numeric) # Fit and predict on df_numeric
+                
+                # Add outlier info to df_clustered for consistent display/reporting if needed
+                # Note: df_clustered already exists and is based on df_numeric
+                df_clustered["Outlier"] = (outlier_predictions == -1)
+                num_outliers = df_clustered['Outlier'].sum()
+                st.write(f"Detected {num_outliers} outliers.")
+
+                if num_outliers > 0:
+                    if st.checkbox("Show Outlier Curves"):
+                        fig_outlier, ax_outlier = plt.subplots()
+                        # Plot non-outliers first for better layering
+                        non_outlier_data_plot = df_clustered[~df_clustered["Outlier"]].drop(["Cluster", "Outlier"], axis=1, errors='ignore')
+                        for _, row_values in non_outlier_data_plot.iterrows():
+                            ax_outlier.plot(timepoints, row_values.values, color="grey", alpha=0.3)
+                        
+                        outlier_data_plot = df_clustered[df_clustered["Outlier"]].drop(["Cluster", "Outlier"], axis=1, errors='ignore')
+                        for idx, row_values in outlier_data_plot.iterrows():
+                            ax_outlier.plot(timepoints, row_values.values, color="orange", alpha=0.9, label=f"Outlier {idx}")
+                        if not outlier_data_plot.empty(): ax_outlier.legend()
+                        st.pyplot(fig_outlier)
+
+                    if st.button("Explain Outliers with LLM"):
+                        outlier_curves_explain = df_clustered[df_clustered["Outlier"]].drop(["Cluster", "Outlier"], axis=1, errors='ignore')
+                        if not outlier_curves_explain.empty:
+                            for i, row_series in outlier_curves_explain.iterrows():
+                                curve_data_dict = row_series.to_dict()
+                                with st.spinner(f"Getting LLM explanation for Outlier {i}..."):
+                                    explanation = explain_outlier(curve_data_dict, api_key)
+                                    st.markdown(f"**Outlier {i}:** {explanation}")
+                        else:
+                            st.info("No outliers detected to explain.") # Should not be reached if num_outliers > 0
+                # else: # This case is if num_outliers == 0
+                #    st.info("No outliers detected.") # Already covered by the outer if
+
+            except Exception as e:
+                st.error(f"Outlier detection failed: {e}")
         else:
             st.warning("Too few samples for reliable outlier detection (need >10 curves).")
-    except Exception as e:
-        st.error(f"Outlier detection failed: {e}")
+    else:
+        st.info("Upload a CSV file to begin analysis.")
