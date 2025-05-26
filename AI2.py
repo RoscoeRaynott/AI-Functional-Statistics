@@ -43,8 +43,8 @@ file_name_display = None # To display the name of the loaded file
 
 # Define paths to your example files
 # Adjust these paths if your files are in a subdirectory, e.g., "data/example_data_1.csv"
-EXAMPLE_FILE_1 = "example_data_1.csv"
-EXAMPLE_FILE_2 = "example_data_2.csv"
+EXAMPLE_FILE_1 = "fourier_fixed_coeffs_100x50.csv"
+EXAMPLE_FILE_2 = "fourier_varying_coeffs_100x50.csv"
 
 if selected_data_source == "Upload your own CSV":
     file = st.sidebar.file_uploader("Upload a CSV file with functional data (rows = curves, columns = timepoints/features)", type=["csv"])
