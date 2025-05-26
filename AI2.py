@@ -394,25 +394,25 @@ if file:
                 st.write(f"Detected {num_outliers} outliers.")
 
                 if num_outliers > 0:
-            if st.checkbox("Show Outlier Curves"): # <<<< YOUR PROBLEMATIC PLOTTING CODE IS HERE
-                try: # Add an inner try-except specifically for the plotting
-                    fig_outlier, ax_outlier = plt.subplots()
-                    # Plot non-outliers first for better layering
-                    non_outlier_data_plot = df_clustered[~df_clustered["Outlier"]].drop(["Cluster", "Outlier"], axis=1, errors='ignore') # Corrected with ~
-                    for _, row_values in non_outlier_data_plot.iterrows():
-                        ax_outlier.plot(timepoints, row_values.values, color="grey", alpha=0.3)
-                    
-                    outlier_data_plot = df_clustered[df_clustered["Outlier"]].drop(["Cluster", "Outlier"], axis=1, errors='ignore')
-                    for idx, row_values in outlier_data_plot.iterrows():
-                        ax_outlier.plot(timepoints, row_values.values, color="orange", alpha=0.9, label=f"Outlier {idx}")
-                    if not outlier_data_plot.empty(): 
-                        ax_outlier.legend()
-                    st.pyplot(fig_outlier)
-                except Exception as plot_e: # Catch plotting specific errors
-                    st.error(f"Plotting outlier curves failed: {plot_e}")
-                    import traceback # Import the traceback module
-                    st.text("Full Traceback for Plotting Error:")
-                    st.code(traceback.format_exc(), language='text') # Display the full traceback as text/code
+                    if st.checkbox("Show Outlier Curves"): # <<<< YOUR PROBLEMATIC PLOTTING CODE IS HERE
+                        try: # Add an inner try-except specifically for the plotting
+                            fig_outlier, ax_outlier = plt.subplots()
+                            # Plot non-outliers first for better layering
+                            non_outlier_data_plot = df_clustered[~df_clustered["Outlier"]].drop(["Cluster", "Outlier"], axis=1, errors='ignore') # Corrected with ~
+                            for _, row_values in non_outlier_data_plot.iterrows():
+                                ax_outlier.plot(timepoints, row_values.values, color="grey", alpha=0.3)
+                            
+                            outlier_data_plot = df_clustered[df_clustered["Outlier"]].drop(["Cluster", "Outlier"], axis=1, errors='ignore')
+                            for idx, row_values in outlier_data_plot.iterrows():
+                                ax_outlier.plot(timepoints, row_values.values, color="orange", alpha=0.9, label=f"Outlier {idx}")
+                            if not outlier_data_plot.empty(): 
+                                ax_outlier.legend()
+                            st.pyplot(fig_outlier)
+                        except Exception as plot_e: # Catch plotting specific errors
+                            st.error(f"Plotting outlier curves failed: {plot_e}")
+                            import traceback # Import the traceback module
+                            st.text("Full Traceback for Plotting Error:")
+                            st.code(traceback.format_exc(), language='text') # Display the full traceback as text/code
 
                     if st.button("Explain Outliers with LLM"):
                         outlier_curves_explain = df_clustered[df_clustered["Outlier"]].drop(["Cluster", "Outlier"], axis=1, errors='ignore')
