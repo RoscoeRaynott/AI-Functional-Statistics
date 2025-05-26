@@ -9,6 +9,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.covariance import EllipticEnvelope
 from sklearn.decomposition import PCA # Import PCA from scikit-learn
 import json # For formatting summary stats in report
+import os # To check for example file existence
 
 # Make sure llm_utils is updated with the correct model ID
 # Assuming llm_utils is a local file or part of your environment
@@ -30,13 +31,48 @@ st.title("📈 Functional Data Analysis with Clustering and LLMs")
 api_key = st.secrets.get('OPENROUTER_API_KEY', 'sk-your-default-api-key') # Use .get() for safer access
 
 # ----------------------------- #
-# 📁 Upload Data
+# 📁 Data Input Options
 # ----------------------------- #
-file = st.file_uploader("Upload a CSV file with functional data (rows = curves, columns = timepoints/features)")
-if file:
-    df_original = pd.read_csv(file) # Keep original for reference if needed
-    df = df_original.copy() # Work with a copy
-    st.write("Data Preview:", df.head())
+st.sidebar.subheader("📁 Data Source")
+data_source_options = ["Upload your own CSV", "Example Data 1", "Example Data 2"]
+selected_data_source = st.sidebar.radio("Choose a data source:", data_source_options)
+
+df_original = None
+df = None
+file_name_display = None # To display the name of the loaded file
+
+# Define paths to your example files
+# Adjust these paths if your files are in a subdirectory, e.g., "data/example_data_1.csv"
+EXAMPLE_FILE_1 = "example_data_1.csv"
+EXAMPLE_FILE_2 = "example_data_2.csv"
+
+if selected_data_source == "Upload your own CSV":
+    file = st.sidebar.file_uploader("Upload a CSV file with functional data (rows = curves, columns = timepoints/features)", type=["csv"])
+    if file:
+        df_original = pd.read_csv(file)
+        df = df_original.copy()
+        file_name_display = file.name
+elif selected_data_source == "Example Data 1":
+    if os.path.exists(EXAMPLE_FILE_1):
+        df_original = pd.read_csv(EXAMPLE_FILE_1)
+        df = df_original.copy()
+        file_name_display = EXAMPLE_FILE_1
+        st.sidebar.success(f"Loaded {EXAMPLE_FILE_1}")
+    else:
+        st.sidebar.error(f"Error: {EXAMPLE_FILE_1} not found. Please make sure it's in the correct directory.")
+elif selected_data_source == "Example Data 2":
+    if os.path.exists(EXAMPLE_FILE_2):
+        df_original = pd.read_csv(EXAMPLE_FILE_2)
+        df = df_original.copy()
+        file_name_display = EXAMPLE_FILE_2
+        st.sidebar.success(f"Loaded {EXAMPLE_FILE_2}")
+    else:
+        st.sidebar.error(f"Error: {EXAMPLE_FILE_2} not found. Please make sure it's in the correct directory.")
+
+# --- Main app logic starts here, only if df is loaded ---
+if df is not None and not df.empty:
+    st.subheader(f"📄 Data Preview: `{file_name_display}`")
+    st.write(df.head())
 
     # ----------------------------- #
     # ⚙️ Feature Engineering
@@ -131,19 +167,16 @@ if file:
                          [f"{ratio:.2%}" for ratio in explained_variance_ratio_sklearn])
 
                 # Determine layout: how many plots per row
-                plots_per_row = 3 # You can adjust this
+                plots_per_row = 3 
                 num_components_to_plot = pca_sklearn.n_components_
                 
-                # We will plot the mean function + n_components
                 total_plots = 1 + num_components_to_plot 
-                num_rows = (total_plots + plots_per_row - 1) // plots_per_row # Ceiling division
+                num_rows = (total_plots + plots_per_row - 1) // plots_per_row 
 
-                # Create a figure with subplots
-                # Adjust figsize as needed for better appearance
                 fig_pca_grid, axes = plt.subplots(num_rows, plots_per_row, 
                                                   figsize=(plots_per_row * 5, num_rows * 4), 
-                                                  squeeze=False) # squeeze=False ensures axes is always 2D
-                axes_flat = axes.flatten() # Flatten to easily iterate
+                                                  squeeze=False) 
+                axes_flat = axes.flatten() 
 
                 # --- Plot 1: Mean Function ---
                 ax_mean_sk = axes_flat[0]
@@ -157,16 +190,12 @@ if file:
 
                 # --- Plot 2 to N+1: Principal Components and Modes of Variation ---
                 for i in range(num_components_to_plot):
-                    ax_comp_sk = axes_flat[i + 1] # Start from the second subplot
+                    ax_comp_sk = axes_flat[i + 1] 
 
                     component_values_sk = components_sklearn[i]
                     eigenvalue_sk = explained_variance_sklearn[i]
                     scaled_effect_sk = np.sqrt(eigenvalue_sk) * component_values_sk
 
-                    # Plot the component itself (optional, can make plots busy)
-                    # ax_comp_sk.plot(timepoints_sklearn_vis, component_values_sk, label=f"Comp {i+1} (Eigenvector)", color='gray', alpha=0.7)
-
-                    # Plot variations: mean +/- sqrt(eigenvalue) * component
                     ax_comp_sk.plot(timepoints_sklearn_vis, mean_function_sklearn, 
                                      label="Mean", color='black', linestyle='-', linewidth=0.8, alpha=0.6)
                     ax_comp_sk.plot(timepoints_sklearn_vis, mean_function_sklearn + scaled_effect_sk,
@@ -182,11 +211,10 @@ if file:
                     ax_comp_sk.tick_params(axis='x', labelsize=8)
                     ax_comp_sk.tick_params(axis='y', labelsize=8)
                 
-                # Hide any unused subplots if the grid is not perfectly filled
                 for j in range(total_plots, len(axes_flat)):
                     fig_pca_grid.delaxes(axes_flat[j])
 
-                plt.tight_layout() # Adjust subplot params for a tight layout
+                plt.tight_layout() 
                 st.pyplot(fig_pca_grid)
         else:
             st.info("PCA results not available for visualization. Please ensure PCA ran successfully.")
@@ -198,7 +226,6 @@ if file:
     # 📊 Clustering
     # ----------------------------- #
     st.subheader("📊 Clustering Options")
-    # Use df_numeric for clustering input
     if not df_numeric.empty:
         clustering_method = st.selectbox(
             "Select Clustering Algorithm",
@@ -235,7 +262,7 @@ if file:
                 model.fit(X_scaled)
                 if hasattr(model, 'labels_'):
                     clusters = model.labels_
-                elif hasattr(model, 'predict'): # GMM uses predict
+                elif hasattr(model, 'predict'): 
                     clusters = model.predict(X_scaled)
             except Exception as e:
                 st.error(f"Clustering failed: {e}")
@@ -244,15 +271,14 @@ if file:
             st.warning("Please select valid clustering parameters.")
             st.stop()
 
-        # Create a DataFrame for plotting that includes cluster labels
         df_clustered = df_numeric.copy()
         df_clustered["Cluster"] = clusters
 
-        valid_clusters = sorted([cid for cid in np.unique(clusters) if cid != -1]) # Exclude noise
+        valid_clusters = sorted([cid for cid in np.unique(clusters) if cid != -1]) 
 
         st.subheader("📉 Clustered Functional Curves")
         fig_cluster_plot, ax_cluster_plot = plt.subplots()
-        if num_actual_clusters := len(valid_clusters): # Python 3.8+ walrus operator
+        if num_actual_clusters := len(valid_clusters): 
             palette = sns.color_palette("viridis", num_actual_clusters)
             for i, cluster_id in enumerate(valid_clusters):
                 cluster_data_plot = df_clustered[df_clustered["Cluster"] == cluster_id].drop("Cluster", axis=1)
@@ -286,7 +312,7 @@ if file:
                     cluster_summary[cluster_id] = summary
                 else:
                     st.warning(f"Cluster {cluster_id} is empty and will be skipped in summary.")
-            st.session_state['cluster_summary'] = cluster_summary # Store for LLM and report
+            st.session_state['cluster_summary'] = cluster_summary 
         else:
             st.info("No valid clusters to summarize.")
             st.session_state.pop('cluster_summary', None)
@@ -319,7 +345,7 @@ if file:
             report_summary = st.session_state.get('cluster_summary', {})
             report_explanations = st.session_state.get('cluster_explanations', {})
             
-            if not report_explanations and report_summary : # If explanations not generated yet for the report
+            if not report_explanations and report_summary : 
                  with st.spinner("Generating explanations for report..."):
                     report_explanations = {cid: explain_cluster(stats, api_key) for cid, stats in report_summary.items() if stats}
                     st.session_state['cluster_explanations'] = report_explanations
@@ -340,7 +366,6 @@ if file:
                     report += f"- Std Value (all points): {stats['std_value']:.2f}\n"
                     report += f"- Min Value (all points): {stats['min_value']:.2f}\n"
                     report += f"- Max Value (all points): {stats['max_value']:.2f}\n\n"
-                    # report += f"**Mean Curve Values (first 5):** {stats['mean_curve'][:5]}\n\n" # Example
                     report += f"**LLM Insight:** {explanations_data.get(cid_key, 'N/A')}\n\n"
                 return report
 
@@ -367,10 +392,9 @@ if file:
         # ----------------------------- #
         st.subheader("🔥 Heatmap of Functional Curves")
         if "Cluster" in df_clustered.columns and not df_clustered.empty:
-            # Ensure only numeric data goes to heatmap, excluding the 'Cluster' column itself
             heatmap_data = df_clustered.sort_values("Cluster").drop("Cluster", axis=1)
             fig_heatmap, ax_heatmap = plt.subplots(figsize=(10, 6))
-            sns.heatmap(heatmap_data, cmap="viridis", ax=ax_heatmap, cbar=True, yticklabels=False) # yticklabels=False for cleaner look with many curves
+            sns.heatmap(heatmap_data, cmap="viridis", ax=ax_heatmap, cbar=True, yticklabels=False) 
             ax_heatmap.set_xlabel("Timepoints")
             ax_heatmap.set_ylabel("Curve Index (Sorted by Cluster)")
             st.pyplot(fig_heatmap)
@@ -381,38 +405,28 @@ if file:
         # 🚨 Outlier Detection
         # ----------------------------- #
         st.subheader("🚨 Outlier Detection in Functional Data")
-        # Use df_numeric for outlier detection as it's purely numerical
-        if len(df_numeric) > 10: # Need enough samples
+        if len(df_numeric) > 10: 
             try:
                 envelope = EllipticEnvelope(contamination=0.1, random_state=42)
-                outlier_predictions = envelope.fit_predict(df_numeric) # Fit and predict on df_numeric
+                outlier_predictions = envelope.fit_predict(df_numeric) 
                 
-                # Add outlier info to df_clustered for consistent display/reporting if needed
-                # Note: df_clustered already exists and is based on df_numeric
                 df_clustered["Outlier"] = (outlier_predictions == -1)
                 num_outliers = df_clustered['Outlier'].sum()
                 st.write(f"Detected {num_outliers} outliers.")
 
                 if num_outliers > 0:
-                    if st.checkbox("Show Outlier Curves"): # <<<< YOUR PROBLEMATIC PLOTTING CODE IS HERE
-                        try: # Add an inner try-except specifically for the plotting
-                            fig_outlier, ax_outlier = plt.subplots()
-                            # Plot non-outliers first for better layering
-                            non_outlier_data_plot = df_clustered[~df_clustered["Outlier"]].drop(["Cluster", "Outlier"], axis=1, errors='ignore') # Corrected with ~
-                            for _, row_values in non_outlier_data_plot.iterrows():
-                                ax_outlier.plot(timepoints, row_values.values, color="grey", alpha=0.3)
-                            
-                            outlier_data_plot = df_clustered[df_clustered["Outlier"]].drop(["Cluster", "Outlier"], axis=1, errors='ignore')
-                            for idx, row_values in outlier_data_plot.iterrows():
-                                ax_outlier.plot(timepoints, row_values.values, color="orange", alpha=0.9, label=f"Outlier {idx}")
-                            if not outlier_data_plot.empty: 
-                                ax_outlier.legend()
-                            st.pyplot(fig_outlier)
-                        except Exception as plot_e: # Catch plotting specific errors
-                            st.error(f"Plotting outlier curves failed: {plot_e}")
-                            import traceback # Import the traceback module
-                            st.text("Full Traceback for Plotting Error:")
-                            st.code(traceback.format_exc(), language='text') # Display the full traceback as text/code
+                    if st.checkbox("Show Outlier Curves"):
+                        fig_outlier, ax_outlier = plt.subplots()
+                        non_outlier_data_plot = df_clustered[~df_clustered["Outlier"]].drop(["Cluster", "Outlier"], axis=1, errors='ignore')
+                        for _, row_values in non_outlier_data_plot.iterrows():
+                            ax_outlier.plot(timepoints, row_values.values, color="grey", alpha=0.3)
+                        
+                        outlier_data_plot = df_clustered[df_clustered["Outlier"]].drop(["Cluster", "Outlier"], axis=1, errors='ignore')
+                        for idx, row_values in outlier_data_plot.iterrows():
+                            ax_outlier.plot(timepoints, row_values.values, color="orange", alpha=0.9, label=f"Outlier {idx}")
+                        if not outlier_data_plot.empty: 
+                            ax_outlier.legend()
+                        st.pyplot(fig_outlier)
 
                     if st.button("Explain Outliers with LLM"):
                         outlier_curves_explain = df_clustered[df_clustered["Outlier"]].drop(["Cluster", "Outlier"], axis=1, errors='ignore')
@@ -423,13 +437,13 @@ if file:
                                     explanation = explain_outlier(curve_data_dict, api_key)
                                     st.markdown(f"**Outlier {i}:** {explanation}")
                         else:
-                            st.info("No outliers detected to explain.") # Should not be reached if num_outliers > 0
-                # else: # This case is if num_outliers == 0
-                #    st.info("No outliers detected.") # Already covered by the outer if
-
+                            st.info("No outliers detected to explain.") 
             except Exception as e:
                 st.error(f"Outlier detection failed: {e}")
+                # import traceback # Optional: for more detailed in-app traceback
+                # st.code(traceback.format_exc())
         else:
             st.warning("Too few samples for reliable outlier detection (need >10 curves).")
-    else:
-        st.info("Upload a CSV file to begin analysis.")
+else:
+    st.sidebar.info("Please upload a CSV file or select an example dataset to begin analysis.")
+    st.info("Welcome! Please select a data source from the sidebar to get started.")
