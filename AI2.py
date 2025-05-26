@@ -405,7 +405,7 @@ if file:
                             outlier_data_plot = df_clustered[df_clustered["Outlier"]].drop(["Cluster", "Outlier"], axis=1, errors='ignore')
                             for idx, row_values in outlier_data_plot.iterrows():
                                 ax_outlier.plot(timepoints, row_values.values, color="orange", alpha=0.9, label=f"Outlier {idx}")
-                            if not outlier_data_plot.empty(): 
+                            if not outlier_data_plot.empty: 
                                 ax_outlier.legend()
                             st.pyplot(fig_outlier)
                         except Exception as plot_e: # Catch plotting specific errors
