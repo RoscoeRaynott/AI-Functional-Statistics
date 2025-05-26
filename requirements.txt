@@ -7,4 +7,3 @@ scikit-learn
 httpx
 requests
 python-dotenv  # for loading OpenRouter API key from .env
-os
