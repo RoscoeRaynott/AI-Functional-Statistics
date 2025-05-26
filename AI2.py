@@ -397,7 +397,7 @@ if file:
                     if st.checkbox("Show Outlier Curves"):
                         fig_outlier, ax_outlier = plt.subplots()
                         # Plot non-outliers first for better layering
-                        non_outlier_data_plot = df_clustered[~df_clustered["Outlier"]].drop(["Cluster", "Outlier"], axis=1, errors='ignore')
+                        non_outlier_data_plot = df_clustered[df_clustered["Outlier"]].drop(["Cluster", "Outlier"], axis=1, errors='ignore')
                         for _, row_values in non_outlier_data_plot.iterrows():
                             ax_outlier.plot(timepoints, row_values.values, color="grey", alpha=0.3)
                         
