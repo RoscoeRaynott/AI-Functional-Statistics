@@ -405,9 +405,41 @@ if df is not None and not df.empty:
         # 🚨 Outlier Detection
         # ----------------------------- #
         st.subheader("🚨 Outlier Detection in Functional Data")
-        if len(df_numeric) > 10: 
+        estimated_contamination = 0.1 # Default
+        if len(df_numeric) > 20: # Need a reasonable number of samples for score distribution
             try:
-                envelope = EllipticEnvelope(contamination=0.1, random_state=42)
+                # Fit a preliminary model to get scores
+                # You might use a slightly higher initial contamination or a method that gives scores easily
+                prelim_envelope = EllipticEnvelope(random_state=42) # Default contamination is 0.1
+                prelim_envelope.fit(df_numeric)
+                scores = prelim_envelope.decision_function(df_numeric)
+                
+                # Simple heuristic: look for a drop after sorting scores
+                # More sophisticated methods exist (e.g., finding the "elbow")
+                sorted_scores = np.sort(scores)
+                # Example: consider points below the 5th percentile of scores as outliers
+                # This is just one heuristic, you might need to adjust the percentile
+                threshold_score = np.percentile(sorted_scores, 5) # Detect ~5% as outliers by this heuristic
+                estimated_outliers = np.sum(scores < threshold_score)
+                estimated_contamination = max(0.01, min(0.49, estimated_outliers / len(df_numeric))) # Ensure in valid range
+                
+                st.write(f"Heuristically estimated contamination: {estimated_contamination:.3f}")
+            except Exception as est_e:
+                st.warning(f"Could not estimate contamination automatically: {est_e}. Using default 0.1.")
+                estimated_contamination = 0.1
+        # --- End of estimation section ---
+        
+        # Use the estimated_contamination or allow user override
+        contamination_value = st.slider(
+            "Contamination (proportion of outliers)", 
+            0.01, 0.49, 
+            float(estimated_contamination), # Convert to float for slider
+            0.01
+        )
+        
+        if len(df_numeric) > 10:
+            try:
+                envelope = EllipticEnvelope(contamination=contamination_value, random_state=42)
                 outlier_predictions = envelope.fit_predict(df_numeric) 
                 
                 df_clustered["Outlier"] = (outlier_predictions == -1)
