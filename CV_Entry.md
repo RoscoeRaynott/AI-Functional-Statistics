@@ -1,0 +1,9 @@
+# CV Entry: Functional Data Analysis with AI-Assisted Interpretation
+
+**Aim:** Develop an integrated analytical framework for clustering and interpreting functional data (time-series curves) by combining classical statistical methods with large language model capabilities to automate insight generation.
+
+**Motivation:** Functional data analysis traditionally requires domain expertise to interpret clustering patterns and principal component variations. Manual interpretation becomes prohibitive with large datasets, creating a bottleneck in exploratory analysis and limiting accessibility for researchers without extensive statistical training.
+
+**Description:** Implemented a web-based platform integrating principal component analysis, multiple clustering algorithms (k-means, DBSCAN, Gaussian mixture models, hierarchical clustering), and outlier detection via robust covariance estimation. The system applies standardized preprocessing, extracts variance modes through PCA, and employs elliptic envelope methods for anomaly detection. Large language models provide automated interpretations of cluster characteristics, comparative analyses between groups, and explanations of anomalous curves, generating exportable reports with statistical summaries and natural language insights.
+
+**Results:** Created a functional prototype capable of processing arbitrary functional datasets with automated pipeline from raw curves to interpreted clusters. The system successfully identifies principal modes of variation, segments data into meaningful groups, detects outliers, and generates human-readable explanations bridging statistical findings with domain understanding. The approach demonstrates how generative AI can augment traditional statistical workflows without replacing rigorous mathematical foundations.
