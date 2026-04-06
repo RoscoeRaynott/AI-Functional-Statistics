@@ -11,8 +11,7 @@ import requests
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 # Choose an available free LLM on OpenRouter
 # --- CHANGE THIS LINE ---
-LLM_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"  # Replace with a valid model ID from OpenRouter
-# e.g., "mistralai/Mistral-7B-Instruct-v0.2", "meta-llama/Llama-2-7b-chat-hf", etc.
+LLM_MODEL = "meta-llama/llama-3.3-70b-instruct:free"  # Free tier on OpenRouter
 # -----------------------
 
 # Helper: Make a chat request to the LLM
