@@ -11,7 +11,7 @@ import requests
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 # Choose an available free LLM on OpenRouter
 # --- CHANGE THIS LINE ---
-LLM_MODEL = "meta-llama/llama-3.3-70b-instruct:free"  # Free tier on OpenRouter
+LLM_MODEL = "meta-llama/llama-3.3-70b-instruct"  # Free tier on OpenRouter
 # -----------------------
 
 # Helper: Make a chat request to the LLM
